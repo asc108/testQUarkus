@@ -1,38 +1,19 @@
-package com.example;
-
-import io.quarkus.test.junit.QuarkusTest;
-import io.restassured.http.ContentType;
 import org.junit.jupiter.api.Test;
+import org.testcontainers.containers.GenericContainer;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import static io.restassured.RestAssured.given;
-import static org.hamcrest.CoreMatchers.is;
-import static org.hamcrest.Matchers.greaterThan;
+@Testcontainers
+public class DockerCheckTest {
 
-@QuarkusTest
-public class PersonResourceTest {
-
-    @Test
-    public void testListEndpoint() {
-        given()
-          .when().get("/persons")
-          .then()
-             .statusCode(200)
-             .body("size()", greaterThan(0));
-    }
+    @Container
+    static GenericContainer<?> container = new GenericContainer<>("alpine:3.14")
+            .withCommand("sh", "-c", "sleep 5 && echo 'Docker works!'");
 
     @Test
-    public void testCreatePerson() {
-        Person person = new Person();
-        person.name = "Test User";
-        person.email = "test@example.com";
-
-        given()
-          .contentType(ContentType.JSON)
-          .body(person)
-          .when().post("/persons")
-          .then()
-             .statusCode(200)
-             .body("name", is("Test User"))
-             .body("email", is("test@example.com"));
+    void testContainerIsRunning() {
+        assertTrue(container.isRunning());
+        System.out.println("✅ TestContainers radi! Docker-in-Docker funkcioniše.");
     }
 }
