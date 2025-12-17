@@ -6,17 +6,25 @@ apiVersion: v1
 kind: Pod
 spec:
   containers:
-  - name: test
+  - name: builder
     image: maven:3.9.5-eclipse-temurin-17
     command: ['sleep']
     args: ['infinity']
     volumeMounts:
     - name: docker-sock
       mountPath: /var/run/docker.sock
+  - name: docker
+    image: docker:24.0-cli
+    command: ['sleep']
+    args: ['infinity']
+    volumeMounts:
+    - name: docker-sock
+      mountPath: /var/run/docker.sock
+    securityContext:
+      privileged: true
   volumes:
   - name: docker-sock
-    hostPath:
-      path: /var/run/docker.sock
+    emptyDir: {}
 '''
         }
     }
@@ -24,22 +32,31 @@ spec:
     stages {
         stage('Test DinD') {
             steps {
-                container('test') {
-                    sh '''
-                        # 1. Docker check
+                container('docker') {
+                    script {
                         echo "=== DOCKER CHECK ==="
-                        docker version
-                        
-                        # 2. Simple container test
-                        echo "=== CONTAINER TEST ==="
-                        docker run --rm alpine:3.14 echo "Docker works in K8s pod"
-                        
-                        # 3. TestContainers test
-                        echo "=== TESTCONTAINERS TEST ==="
-                        mvn clean test -Dtest=DockerCheckTest -q
-                        
-                        echo "✅ SUCCESS: DinD ready for pipeline!"
-                    '''
+                        sh '''
+                            docker version
+                            docker run --rm alpine:3.14 echo "Docker CLI works"
+                        '''
+                    }
+                }
+                
+                container('builder') {
+                    script {
+                        echo "=== BUILD & TEST ==="
+                        sh '''
+                            # Install docker CLI in maven container
+                            apt-get update && apt-get install -y docker.io curl
+                            docker --version
+                            
+                            # Test Docker connection
+                            docker run --rm alpine:3.14 echo "Docker works with Maven"
+                            
+                            # Run TestContainers test
+                            mvn clean test -Dtest=DockerCheckTest
+                        '''
+                    }
                 }
             }
         }
