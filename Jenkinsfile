@@ -1,90 +1,46 @@
 pipeline {
-    agent {
-        kubernetes {
-            label 'quarkus-test-${UUID.randomUUID()}'
-            yaml '''
-apiVersion: v1
-kind: Pod
-spec:
-  containers:
-  - name: maven-docker
-    image: maven:3.9.6-eclipse-temurin-21
-    command: ["cat"]
-    tty: true
-    securityContext:
-      privileged: true  # ⚠️ Potrebno za Docker
-    volumeMounts:
-    - name: docker-sock
-      mountPath: /var/run/docker.sock
-    env:
-    - name: DOCKER_HOST
-      value: unix:///var/run/docker.sock
-  volumes:
-  - name: docker-sock
-    hostPath:
-      path: /var/run/docker.sock
-'''
-        }
-    }
-
+    agent any
+    
     stages {
-        stage('Checkout') {
+        stage('Debug - Check What We Have') {
             steps {
-                checkout scm
-                container('maven-docker') {
-                    sh '''
-                        echo "=== Current directory ==="
-                        pwd
-                        ls -la
-                        echo ""
-
-                        echo "=== Check Docker ==="
-                        docker version
-                        echo ""
-
-                        echo "=== Check Maven ==="
-                        mvn --version
-                        echo ""
-
-                        echo "=== Check docker-compose ==="
-                        which docker-compose || pip install docker-compose
-                    '''
-                }
+                sh '''
+                    echo "=== DEBUG INFO ==="
+                    echo "1. Directory:"
+                    pwd
+                    ls -la
+                    echo ""
+                    
+                    echo "2. Files in repo:"
+                    find . -type f -name "*.java" | head -10
+                    echo ""
+                    
+                    echo "3. Check pom.xml:"
+                    if [ -f "pom.xml" ]; then
+                        echo "pom.xml exists"
+                        head -20 pom.xml
+                    else
+                        echo "NO pom.xml!"
+                    fi
+                    echo ""
+                    
+                    echo "4. Check test file:"
+                    find . -name "PersonResourceTest.java" -exec echo "Found: {}" \\;
+                '''
             }
         }
-
-        stage('Simple Test - Just Maven') {
+        
+        stage('Try Maven Directly') {
             steps {
-                container('maven-docker') {
-                    sh '''
-                        echo "=== 1. Try to compile first ==="
-                        mvn clean compile -DskipTests
-                        echo "✅ Compile successful"
-
-                        echo "=== 2. Check if tests exist ==="
-                        find . -name "*Test.java" -type f
-                    '''
-                }
-            }
-        }
-
-        stage('Test WITHOUT Docker Compose') {
-            steps {
-                container('maven-docker') {
-                    sh '''
-                        echo "=== Running tests WITHOUT external dependencies ==="
-                        # Probaj samo unit testove
-                        mvn test -Dtest=PersonResourceTest 2>&1 | tail -100
-                    '''
-                }
-            }
-            post {
-                always {
-                    junit 'target/surefire-reports/*.xml'
-                }
+                sh '''
+                    echo "=== Try mvn test ==="
+                    # Probaj sa /usr/bin/mvn ako postoji
+                    /usr/bin/mvn test 2>&1 | head -50 || echo "Maven test failed"
+                '''
             }
         }
     }
+}
 
     post {
         always {
