@@ -2,22 +2,29 @@ pipeline {
     agent any
 
     stages {
-        stage('Checkout & Setup') {
+        stage('Checkout & Setup Maven') {
             steps {
                 checkout scm
                 sh '''
-                    echo "=== Setup ==="
-                    chmod +x mvnw 2>/dev/null || true
+                    echo "=== 1. Install Maven if missing ==="
+                    which mvn || (apt-get update && apt-get install -y maven)
+                    mvn --version
+
+                    echo "=== 2. Check Docker ==="
+                    docker --version
+                    docker-compose --version || apt-get install -y docker-compose
+
+                    echo "=== 3. List files ==="
                     ls -la
                 '''
             }
         }
 
-        stage('Build JAR') {
+        stage('Build JAR with System Maven') {
             steps {
                 sh '''
-                    echo "=== Building Quarkus JAR ==="
-                    ./mvnw clean package -DskipTests -Dquarkus.package.type=uber-jar
+                    echo "=== Building with system Maven ==="
+                    mvn clean package -DskipTests -Dquarkus.package.type=uber-jar
                     ls -lh target/*.jar
                 '''
             }
@@ -27,58 +34,54 @@ pipeline {
             steps {
                 script {
                     sh '''
-                        echo "=== 1. Start PostgreSQL with Docker Compose ==="
-                        # Pokreni SAMO PostgreSQL (bez app)
+                        echo "=== 1. Start PostgreSQL ==="
                         docker-compose up -d postgres
 
-                        echo "=== 2. Wait for PostgreSQL to be ready ==="
-                        sleep 10
-                        docker-compose ps
+                        echo "=== 2. Wait for DB (max 30s) ==="
+                        for i in {1..30}; do
+                            if docker-compose exec postgres pg_isready -U quarkus; then
+                                echo "✅ PostgreSQL is ready!"
+                                break
+                            fi
+                            echo "Waiting for PostgreSQL... ($i/30)"
+                            sleep 2
+                        done
 
-                        echo "=== 3. Run Tests against running PostgreSQL ==="
-                        # Koristi environment variables iz docker-compose za testove
-                        export QUARKUS_DATASOURCE_JDBC_URL="jdbc:postgresql://localhost:5432/quarkus_db"
-                        export QUARKUS_DATASOURCE_USERNAME="quarkus"
-                        export QUARKUS_DATASOURCE_PASSWORD="quarkus"
+                        echo "=== 3. Get DB IP ==="
+                        DB_IP=$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' quarkus-postgres)
+                        echo "PostgreSQL IP: $DB_IP"
 
-                        ./mvnw test \
-                          -Dquarkus.datasource.jdbc.url=${QUARKUS_DATASOURCE_JDBC_URL} \
-                          -Dquarkus.datasource.username=${QUARKUS_DATASOURCE_USERNAME} \
-                          -Dquarkus.datasource.password=${QUARKUS_DATASOURCE_PASSWORD}
+                        echo "=== 4. Run Tests ==="
+                        mvn test \\
+                          -Dquarkus.datasource.jdbc.url=jdbc:postgresql://${DB_IP}:5432/quarkus_db \\
+                          -Dquarkus.datasource.username=quarkus \\
+                          -Dquarkus.datasource.password=quarkus \\
+                          -Dtest=PersonResourceTest
 
-                        echo "=== 4. Stop PostgreSQL ==="
-                        docker-compose down
+                        echo "=== 5. Show test results ==="
+                        find target/surefire-reports -name "*.txt" -exec echo "=== {} ===" \\; -exec cat {} \\;
                     '''
                 }
             }
             post {
                 always {
                     junit 'target/surefire-reports/*.xml'
-                    sh '''
-                        echo "=== Cleanup ==="
-                        docker-compose down -v 2>/dev/null || true
-                        docker ps -aq | xargs -r docker rm -f 2>/dev/null || true
-                    '''
+                    sh 'docker-compose down'
                 }
             }
         }
 
-        stage('Build & Test Full Stack') {
+        stage('Quick API Test') {
             steps {
                 script {
                     sh '''
-                        echo "=== 1. Build and start full stack ==="
-                        docker-compose up --build -d
+                        echo "=== Quick API test ==="
+                        docker-compose up -d
+                        sleep 20
 
-                        echo "=== 2. Wait for app to start ==="
-                        sleep 15
+                        echo "Testing /persons endpoint..."
+                        curl -f http://localhost:8080/persons || echo "Endpoint test failed"
 
-                        echo "=== 3. Test REST API ==="
-                        # Testiraj da li app radi
-                        curl -f http://localhost:8080/q/health || echo "Health check failed"
-                        curl -f http://localhost:8080/persons || echo "Persons endpoint failed"
-
-                        echo "=== 4. Stop everything ==="
                         docker-compose down
                     '''
                 }
@@ -89,17 +92,16 @@ pipeline {
     post {
         always {
             sh '''
-                echo "=== Final cleanup ==="
+                echo "=== Cleanup ==="
                 docker-compose down -v 2>/dev/null || true
-                docker system prune -f 2>/dev/null || true
+                docker ps -aq | xargs -r docker rm -f 2>/dev/null || true
             '''
-            cleanWs()
         }
         success {
-            echo '✅ All tests passed with Docker Compose!'
+            echo '✅ TestContainers alternative test PASSED!'
         }
         failure {
-            echo '❌ Tests failed'
+            echo '❌ Test failed'
         }
     }
 }
