@@ -54,13 +54,18 @@ pipeline {
                     script {
                         echo "=== 4. RUNNING TESTCONTAINERS TEST ==="
                         sh '''
-                            # KLJUČNO: Eksplicitno postavljamo DOCKER_HOST za TestContainers
-                            export DOCKER_HOST="tcp://localhost:2375"
-                            echo "Using DOCKER_HOST: $DOCKER_HOST"
-
-                            # Pokrećemo test sa eksplicitnom DOCKER_HOST varijablom
-                            mvn clean test -Dtest=UserResourceTest -B -e
-                        '''
+    # KLJUČNO: Konfiguracija za TestContainers da koristi samo TCP
+    export DOCKER_HOST="tcp://localhost:2375"
+    export TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE="/var/run/docker.sock"
+    export TESTCONTAINERS_HOST_OVERRIDE="localhost"
+    
+    echo "TestContainers config:"
+    echo "  DOCKER_HOST=$DOCKER_HOST"
+    echo "  TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=$TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE"
+    echo "  TESTCONTAINERS_HOST_OVERRIDE=$TESTCONTAINERS_HOST_OVERRIDE"
+    
+    mvn clean test -Dtest=UserResourceTest -B -e
+'''
                     }
                 }
             }
