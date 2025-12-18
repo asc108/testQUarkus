@@ -20,7 +20,7 @@ pipeline {
                 echo "=== 1b. TEST DOCKER DAEMON ==="
                 sh '''
                     # ISPRAVLJENO: koristite docker:cli umesto docker:30-cli
-                    docker run --rm docker:cli docker version
+                   docker version
                     echo "✅ DinD daemon RESPONDS"
                 '''
             }
