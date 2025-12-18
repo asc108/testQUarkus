@@ -65,7 +65,7 @@ pipeline {
                             
                             echo "🚀 Running mvn test with TestContainers..."
                             # PROMENA OVDE: koristite ' jednostruke navodnike za pattern
-                            mvn clean test -Dtest=UserResourceTest -B 2>&1 | grep -A 20 -B 5 'TESTCONTAINERS\|Could not find'
+                            mvn clean test -Dtest=UserResourceTest -B 2>&1 | grep -A 20 -B 5 'TESTCONTAINERS'
                         '''
                     }
                 }
