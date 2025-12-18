@@ -31,27 +31,31 @@ pipeline {
                 container('maven') {
                     script {
                         echo "=== Running TestContainers Test ==="
-                           sh '''
+                            sh '''
                             # Postavi environment varijable
                             export DOCKER_HOST="tcp://localhost:2375"
-                            export TESTCONTAINERS_DEBUG="true"
+                            export TESTCONTAINERS_RYUK_DISABLED="true"
                             
                             echo "DOCKER_HOST=$DOCKER_HOST"
+                            echo "TESTCONTAINERS_RYUK_DISABLED=$TESTCONTAINERS_RYUK_DISABLED"
                             
-                            # KREIRAJ testcontainers.properties fajl - ovo je JEDINI pouzdan nacin!
+                            # KREIRAJ testcontainers.properties fajl za dodatnu sigurnost
                             mkdir -p src/test/resources
                             cat > src/test/resources/testcontainers.properties << 'EOF'
-testcontainers.ryuk.disabled=true
-testcontainers.reuse.enable=true
-docker.client.strategy=org.testcontainers.dockerclient.EnvironmentAndSystemPropertyClientProviderStrategy
+# Isključi Ryuk - resource reaper container
+ryuk.container.image=
+checks.disable=true
 EOF
                             
                             echo "=== Created testcontainers.properties ==="
                             cat src/test/resources/testcontainers.properties
                             echo "======================================="
                             
-                            # Pokreni testove
-                            mvn clean test -Dtest=UserResourceTest -B -e
+                            # Pokreni testove sa svim potrebnim propertyima
+                            mvn clean test -Dtest=UserResourceTest \
+                                -Dtestcontainers.ryuk.disabled=true \
+                                -Dtestcontainers.checks.disable=true \
+                                -B -e
                         '''
                     }
                 }
