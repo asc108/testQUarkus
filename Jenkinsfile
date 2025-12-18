@@ -2,36 +2,82 @@ pipeline {
     agent {
         label 'dind-agent'
     }
+
     stages {
-        stage('Full TestContainers Sanity Check') {
+        stage('Install Tools & Check Docker') {
             steps {
                 container('maven') {
                     script {
-                        echo "=== 0. Installing Tools ==="
+                        echo "=== 1. INSTALLING DOCKER CLI & MAVEN ==="
                         sh '''
                             apt-get update
-                            apt-get install -y docker.io maven
+                            apt-get install -y docker.io maven netcat-openbsd
+                            echo "--- Versions ---"
                             docker --version
                             mvn --version
                         '''
 
-                        echo "=== 1. Quick Docker Check ==="
-                        sh 'docker run --rm alpine:3.14 echo "Docker daemon ready"'
+                        echo "=== 2. QUICK DOCKER CHECK ==="
+                        sh 'docker run --rm alpine:3.14 echo "✅ Docker CLI -> DinD connection WORKS"'
+                    }
+                }
+            }
+        }
 
-                        echo "=== 2. Run Maven Test with TestContainers ==="
-                        // PROMENA OVDE: Koristite 'UserResourceTest'
-                        sh 'mvn clean test -Dtest=UserResourceTest -B'
+        stage('Debug TestContainers Environment') {
+            steps {
+                container('maven') {
+                    script {
+                        echo "=== 3. DEBUG: DOCKER ENVIRONMENT ==="
+                        sh '''
+                            echo "--- Current DOCKER_HOST env var ---"
+                            echo "DOCKER_HOST=$DOCKER_HOST"
+                            echo ""
+                            echo "--- Checking port 2375 on localhost ---"
+                            if nc -zv localhost 2375 2>/dev/null; then
+                                echo "✅ Port 2375 is OPEN and reachable"
+                            else
+                                echo "❌ Cannot reach localhost:2375"
+                            fi
+                            echo ""
+                            echo "--- Testing Docker connection via CLI ---"
+                            docker info --format '{{.ServerVersion}}' && echo "✅ Docker daemon responds" || echo "❌ Docker daemon not responding"
+                        '''
+                    }
+                }
+            }
+        }
+
+        stage('Run TestContainers Test') {
+            steps {
+                container('maven') {
+                    script {
+                        echo "=== 4. RUNNING TESTCONTAINERS TEST ==="
+                        sh '''
+                            # KLJUČNO: Eksplicitno postavljamo DOCKER_HOST za TestContainers
+                            export DOCKER_HOST="tcp://localhost:2375"
+                            echo "Using DOCKER_HOST: $DOCKER_HOST"
+
+                            # Pokrećemo test sa eksplicitnom DOCKER_HOST varijablom
+                            mvn clean test -Dtest=UserResourceTest -B -e
+                        '''
                     }
                 }
             }
             post {
                 success {
-                    echo "✅🎉 POTPUN USPEH! DinD + TestContainers rade sa realnim PostgreSQL-om."
+                    echo "✅🎉 POTPUN USPEH! TestContainers test sa PostgreSQL-om radi u DinD pipeline-u!"
                 }
                 failure {
-                    echo "⚠️ Test pao."
+                    echo "❌ Test failed. Check the 'Run TestContainers Test' stage logs for details."
                 }
             }
+        }
+    }
+
+    post {
+        always {
+            echo "=== PIPELINE FINISHED ==="
         }
     }
 }
