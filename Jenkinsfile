@@ -31,20 +31,27 @@ pipeline {
                 container('maven') {
                     script {
                         echo "=== Running TestContainers Test ==="
-                          sh '''
+                            sh '''
                             # Postavi environment varijable
                             export DOCKER_HOST="tcp://localhost:2375"
                             export TESTCONTAINERS_DEBUG="true"
                             
                             echo "DOCKER_HOST=$DOCKER_HOST"
-                            echo "Running tests with Ryuk disabled and reuse enabled..."
                             
-                            # Koristimo Maven -D properties za direktnu konfiguraciju TestContainers-a
-                            mvn clean test -Dtest=UserResourceTest \
-                                -Dtestcontainers.ryuk.disabled=true \
-                                -Dtestcontainers.reuse.enable=true \
-                                -Ddocker.host=tcp://localhost:2375 \
-                                -B -e
+                            # KREIRAJ testcontainers.properties fajl - ovo je JEDINI pouzdan nacin!
+                            mkdir -p src/test/resources
+                            cat > src/test/resources/testcontainers.properties << 'EOF'
+testcontainers.ryuk.disabled=true
+testcontainers.reuse.enable=true
+docker.client.strategy=org.testcontainers.dockerclient.EnvironmentAndSystemPropertyClientProviderStrategy
+EOF
+                            
+                            echo "=== Created testcontainers.properties ==="
+                            cat src/test/resources/testcontainers.properties
+                            echo "======================================="
+                            
+                            # Pokreni testove
+                            mvn clean test -Dtest=UserResourceTest -B -e
                         '''
                     }
                 }
