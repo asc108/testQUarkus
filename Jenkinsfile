@@ -35,6 +35,7 @@ pipeline {
                             # Postavi environment varijable
                             export DOCKER_HOST="tcp://localhost:2375"
                             export TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE="/var/run/docker.sock"
+                            TESTCONTAINERS_RYUK_DISABLED="true"
                             export TESTCONTAINERS_DEBUG="true"
                             
                             echo "DOCKER_HOST=$DOCKER_HOST"
