@@ -5,27 +5,28 @@ pipeline {
 
     stages {
         stage('1. Basic DinD Check') {
-            steps {
-                container('maven') {
-                    script {
-                        echo "=== 1a. INSTALL DOCKER CLI ==="
-                        sh '''
-                            apt-get update && apt-get install -y curl
-                            curl -fsSL "https://download.docker.com/linux/static/stable/x86_64/docker-29.1.3.tgz" -o docker.tgz
-                            tar -xzf docker.tgz --strip-components=1 -C /usr/local/bin docker/docker
-                            rm docker.tgz
-                            docker --version
-                        '''
-                        
-                        echo "=== 1b. TEST DOCKER DAEMON ==="
-                        sh '''
-                            docker run --rm docker:30-cli docker version
-                            echo "✅ DinD daemon RESPONDS"
-                        '''
-                    }
-                }
+    steps {
+        container('maven') {
+            script {
+                echo "=== 1a. INSTALL DOCKER CLI ==="
+                sh '''
+                    apt-get update && apt-get install -y curl
+                    curl -fsSL "https://download.docker.com/linux/static/stable/x86_64/docker-29.1.3.tgz" -o docker.tgz
+                    tar -xzf docker.tgz --strip-components=1 -C /usr/local/bin docker/docker
+                    rm docker.tgz
+                    docker --version
+                '''
+                
+                echo "=== 1b. TEST DOCKER DAEMON ==="
+                sh '''
+                    # ISPRAVLJENO: koristite docker:cli umesto docker:30-cli
+                    docker run --rm docker:cli docker version
+                    echo "✅ DinD daemon RESPONDS"
+                '''
             }
         }
+    }
+}
 
         stage('2. Configure TestContainers') {
             steps {
