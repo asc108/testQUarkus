@@ -7,24 +7,32 @@ pipeline {
             steps {
                 container('maven') {
                     script {
-                        // KORAK 0: INSTALIRAJ DOCKER CLI (OBVEZNO)
-                        echo "=== 0. Installing Docker CLI ==="
-                        sh 'apt-get update && apt-get install -y docker.io'
+                        // KORAK 0: INSTALIRAJ POTREBNE ALATE
+                        echo "=== 0. Installing Tools ==="
+                        sh '''
+                            apt-get update
+                            apt-get install -y docker.io maven
+                            docker --version
+                            mvn --version
+                        '''
                         
                         echo "=== 1. Quick Docker Check ==="
                         sh 'docker run --rm alpine:3.14 echo "Docker daemon ready"'
                         
                         echo "=== 2. Run Maven Test with TestContainers ==="
-                        sh './mvnw clean test -Dtest=DockerCheckTest -B'
+                        // Koristi 'mvn' jer nemamo Maven Wrapper u ovom test projektu
+                        sh 'mvn clean test -Dtest=DockerCheckTest -B'
                     }
                 }
             }
             post {
                 success {
-                    echo "✅🎉 POTPUN USPEH! TestContainers radi."
+                    echo "✅🎉 POTPUN USPEH! DinD + TestContainers rade."
+                    echo "Sada možete da primenite ovaj Pod Template na REALNE projekte vaše organizacije."
+                    echo "Oni će koristiti './mvnw' i imaće već podešene dozvole."
                 }
                 failure {
-                    echo "⚠️ TestContainers test pao."
+                    echo "⚠️ Test pao. Proverite TestContainers testni kod."
                 }
             }
         }
