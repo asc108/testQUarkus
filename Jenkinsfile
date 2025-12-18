@@ -3,47 +3,37 @@ pipeline {
         label 'dind-agent'
     }
     stages {
-        stage('Final Sanity Check') {
+        stage('Run TestContainers Test') {
             steps {
                 container('maven') {
                     script {
-                        // 1. Install Docker CLI (Ubuntu-compatible method)
                         echo "=== INSTALL DOCKER CLI ==="
-                        sh '''
-                            apt-get update && apt-get install -y docker.io
-                            docker --version
-                        '''
-
-                        // 2. Verify Maven
-                        echo "=== VERIFY MAVEN ==="
-                        sh 'mvn --version'
-
-                        // 3. CRITICAL: Test Docker -> DinD Connection
-                        echo "=== TEST DOCKER DAEMON CONNECTION ==="
-                        sh '''
-                            docker version
-                            echo "✅ DinD daemon connection verified."
-                        '''
+                        sh 'apt-get update && apt-get install -y docker.io'
                         
-                        // 4. Quick TestContainers Debug
-                        echo "=== QUICK TESTCONTAINERS DEBUG ==="
+                        echo "=== RUN TESTCONTAINERS TEST ==="
                         sh '''
-                            # Show the environment TestContainers will see
-                            echo "DOCKER_HOST=$DOCKER_HOST"
-                            # Set the socket override to prevent socket checks
+                            # Set ALL required environment variables for TestContainers
+                            export DOCKER_HOST="tcp://localhost:2375"
                             export TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE="/var/run/docker.sock"
-                            echo "TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=$TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE"
+                            export TESTCONTAINERS_HOST_OVERRIDE="localhost"
+                            export TESTCONTAINERS_DOCKER_MACHINE_OVERRIDE="true"
+                            export TESTCONTAINERS_DEBUG="true"
+                            
+                            echo "TestContainers Environment:"
+                            echo "DOCKER_HOST=$DOCKER_HOST"
+                            
+                            # Run the test and capture ALL output
+                            mvn clean test -Dtest=UserResourceTest -B -e
                         '''
                     }
                 }
             }
             post {
                 success {
-                    echo "✅ MAJOR MILESTONE: DinD environment is fully ready."
-                    echo "Next step: Run the actual TestContainers test."
+                    echo "✅🎉 ULTIMATE SUCCESS! TestContainers works in Jenkins DinD pipeline!"
                 }
                 failure {
-                    echo "❌ Setup failed. Check the Docker CLI installation step."
+                    echo "⚠️ Test failed. Check Maven/TestContainers logs above."
                 }
             }
         }
