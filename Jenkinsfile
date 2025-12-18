@@ -4,86 +4,89 @@ pipeline {
     }
 
     stages {
-        stage('Install Tools & Check Docker') {
-    steps {
-        container('maven') {
-            script {
-                echo "=== 1. INSTALLING DOCKER CLI & MAVEN ==="
-                sh '''
-                    apt-get update
-                    apt-get install -y maven netcat-openbsd curl
-                    
-                    echo "--- Installing Docker CLI binary ---"
-                    # Preuzmi Docker CLI koji odgovara DinD verziji (29.1.3)
-                    curl -fsSL "https://download.docker.com/linux/static/stable/x86_64/docker-29.1.3.tgz" -o docker.tgz
-                    tar -xzf docker.tgz --strip-components=1 -C /usr/local/bin docker/docker
-                    rm docker.tgz
-                    chmod +x /usr/local/bin/docker
-                    
-                    echo "--- Versions ---"
-                    docker --version  # Trebalo bi da pokaže 29.1.3
-                    mvn --version
-                '''
-                
-                echo "=== 2. QUICK DOCKER CHECK ==="
-                sh 'docker run --rm alpine:3.14 echo "✅ Docker CLI -> DinD connection WORKS"'
-            }
-        }
-    }
-}
-
-        stage('Debug TestContainers Environment') {
+        // KORAK 1: Osnovna provera - da li DinD i Docker CLI rade
+        stage('1. Basic DinD Check') {
             steps {
                 container('maven') {
                     script {
-                        echo "=== 3. DEBUG: DOCKER ENVIRONMENT ==="
+                        echo "=== 1a. INSTALL DOCKER CLI ==="
                         sh '''
-                            echo "--- Current DOCKER_HOST env var ---"
-                            echo "DOCKER_HOST=$DOCKER_HOST"
-                            echo ""
-                            echo "--- Checking port 2375 on localhost ---"
-                            if nc -zv localhost 2375 2>/dev/null; then
-                                echo "✅ Port 2375 is OPEN and reachable"
-                            else
-                                echo "❌ Cannot reach localhost:2375"
-                            fi
-                            echo ""
-                            echo "--- Testing Docker connection via CLI ---"
-                            docker info --format '{{.ServerVersion}}' && echo "✅ Docker daemon responds" || echo "❌ Docker daemon not responding"
+                            apt-get update && apt-get install -y curl
+                            # Preuzmi Docker CLI koji MATCH verziju DinD-a (29.1.3)
+                            curl -fsSL "https://download.docker.com/linux/static/stable/x86_64/docker-29.1.3.tgz" -o docker.tgz
+                            tar -xzf docker.tgz --strip-components=1 -C /usr/local/bin docker/docker
+                            rm docker.tgz
+                            docker --version
+                        '''
+                        
+                        echo "=== 1b. TEST DOCKER DAEMON ==="
+                        sh '''
+                            # Ova komanda će FAIL-ovati ako DinD ne radi
+                            docker run --rm docker:30-cli docker version
+                            echo "✅ DinD daemon RESPONDS"
                         '''
                     }
                 }
             }
         }
 
-        stage('Run TestContainers Test') {
-    steps {
-        container('maven') {
-            script {
-                echo "=== 4. RUNNING TESTCONTAINERS TEST (WITH DEBUG) ==="
-                sh '''
-    # KLJUČNO: Konfiguracija za TestContainers sa debug logovima
-    export DOCKER_HOST="tcp://localhost:2375"
-    export TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE="/var/run/docker.sock"
-    export TESTCONTAINERS_HOST_OVERRIDE="localhost"
-    export TESTCONTAINERS_DEBUG="true"  # <-- DODAJ OVO
-    
-    echo "TestContainers config:"
-    echo "  DOCKER_HOST=$DOCKER_HOST"
-    echo "  TESTCONTAINERS_DEBUG=$TESTCONTAINERS_DEBUG"
-    
-    # Pokreni test i sačuvaj detaljne logove
-    mvn clean test -Dtest=UserResourceTest -B -e 2>&1 | tee mvn-test-output.log
-'''
+        // KORAK 2: Provera TestContainers konfiguracije - DODAJEMO JEDNU VAŽNU VARIJABLU
+        stage('2. Configure TestContainers') {
+            steps {
+                container('maven') {
+                    script {
+                        echo "=== 2. SET TESTCONTAINERS ENV VARS ==="
+                        sh '''
+                            # OVE TRI VARIJABLE SU KLJUČNE za DinD
+                            export DOCKER_HOST="tcp://localhost:2375"
+                            export TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE="/var/run/docker.sock"
+                            export TESTCONTAINERS_HOST_OVERRIDE="localhost"
+                            
+                            # OVA ČETVRTA JE NOVA I VAŽNA - isključuje provjeru za docker-machine
+                            export TESTCONTAINERS_DOCKER_MACHINE_OVERRIDE="true"
+                            
+                            echo "CONFIGURATION:"
+                            echo "DOCKER_HOST=$DOCKER_HOST"
+                            echo "TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=$TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE"
+                            echo "TESTCONTAINERS_HOST_OVERRIDE=$TESTCONTAINERS_HOST_OVERRIDE"
+                            echo "TESTCONTAINERS_DOCKER_MACHINE_OVERRIDE=$TESTCONTAINERS_DOCKER_MACHINE_OVERRIDE"
+                            
+                            # Test: pokušaj da direktno pozoveš TestContainers da proveri Docker
+                            java -cp ".:*" org.testcontainers.dockerclient.DockerClientProviderStrategy 2>&1 | head -30 || true
+                        '''
+                    }
+                }
             }
         }
-    }
-}
-    }
 
-    post {
-        always {
-            echo "=== PIPELINE FINISHED ==="
+        // KORAK 3: Pokretanje testa SA SVIM VARIJABLAMA
+        stage('3. Run TestContainers Test') {
+            steps {
+                container('maven') {
+                    script {
+                        echo "=== 3. RUN TEST ==="
+                        sh '''
+                            # PONOVO POSTAVI SVE VARIJABLE (zbog sigurnosti)
+                            export DOCKER_HOST="tcp://localhost:2375"
+                            export TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE="/var/run/docker.sock"
+                            export TESTCONTAINERS_HOST_OVERRIDE="localhost"
+                            export TESTCONTAINERS_DOCKER_MACHINE_OVERRIDE="true"
+                            export TESTCONTAINERS_DEBUG="true"
+                            
+                            echo "🚀 Running mvn test with TestContainers..."
+                            mvn clean test -Dtest=UserResourceTest -B 2>&1 | grep -A 20 -B 5 "TESTCONTAINERS\|Could not find"
+                        '''
+                    }
+                }
+            }
+            post {
+                success {
+                    echo "✅🎉 SANITY CHECK COMPLETE: TestContainers works in DinD!"
+                }
+                failure {
+                    echo "❌ Final check failed. Need to examine TestContainers debug logs."
+                }
+            }
         }
     }
 }
