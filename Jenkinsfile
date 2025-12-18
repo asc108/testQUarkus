@@ -49,35 +49,28 @@ pipeline {
         }
 
         stage('Run TestContainers Test') {
-            steps {
-                container('maven') {
-                    script {
-                        echo "=== 4. RUNNING TESTCONTAINERS TEST ==="
-                        sh '''
-    # KLJUČNO: Konfiguracija za TestContainers da koristi samo TCP
+    steps {
+        container('maven') {
+            script {
+                echo "=== 4. RUNNING TESTCONTAINERS TEST (WITH DEBUG) ==="
+                sh '''
+    # KLJUČNO: Konfiguracija za TestContainers sa debug logovima
     export DOCKER_HOST="tcp://localhost:2375"
     export TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE="/var/run/docker.sock"
     export TESTCONTAINERS_HOST_OVERRIDE="localhost"
+    export TESTCONTAINERS_DEBUG="true"  # <-- DODAJ OVO
     
     echo "TestContainers config:"
     echo "  DOCKER_HOST=$DOCKER_HOST"
-    echo "  TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=$TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE"
-    echo "  TESTCONTAINERS_HOST_OVERRIDE=$TESTCONTAINERS_HOST_OVERRIDE"
+    echo "  TESTCONTAINERS_DEBUG=$TESTCONTAINERS_DEBUG"
     
-    mvn clean test -Dtest=UserResourceTest -B -e
+    # Pokreni test i sačuvaj detaljne logove
+    mvn clean test -Dtest=UserResourceTest -B -e 2>&1 | tee mvn-test-output.log
 '''
-                    }
-                }
-            }
-            post {
-                success {
-                    echo "✅🎉 POTPUN USPEH! TestContainers test sa PostgreSQL-om radi u DinD pipeline-u!"
-                }
-                failure {
-                    echo "❌ Test failed. Check the 'Run TestContainers Test' stage logs for details."
-                }
             }
         }
+    }
+}
     }
 
     post {
