@@ -5,24 +5,32 @@ pipeline {
 
     stages {
         stage('Install Tools & Check Docker') {
-            steps {
-                container('maven') {
-                    script {
-                        echo "=== 1. INSTALLING DOCKER CLI & MAVEN ==="
-                        sh '''
-                            apt-get update
-                            apt-get install -y docker.io maven netcat-openbsd
-                            echo "--- Versions ---"
-                            docker --version
-                            mvn --version
-                        '''
-
-                        echo "=== 2. QUICK DOCKER CHECK ==="
-                        sh 'docker run --rm alpine:3.14 echo "✅ Docker CLI -> DinD connection WORKS"'
-                    }
-                }
+    steps {
+        container('maven') {
+            script {
+                echo "=== 1. INSTALLING DOCKER CLI & MAVEN ==="
+                sh '''
+                    apt-get update
+                    apt-get install -y maven netcat-openbsd curl
+                    
+                    echo "--- Installing Docker CLI binary ---"
+                    # Preuzmi Docker CLI koji odgovara DinD verziji (29.1.3)
+                    curl -fsSL "https://download.docker.com/linux/static/stable/x86_64/docker-29.1.3.tgz" -o docker.tgz
+                    tar -xzf docker.tgz --strip-components=1 -C /usr/local/bin docker/docker
+                    rm docker.tgz
+                    chmod +x /usr/local/bin/docker
+                    
+                    echo "--- Versions ---"
+                    docker --version  # Trebalo bi da pokaže 29.1.3
+                    mvn --version
+                '''
+                
+                echo "=== 2. QUICK DOCKER CHECK ==="
+                sh 'docker run --rm alpine:3.14 echo "✅ Docker CLI -> DinD connection WORKS"'
             }
         }
+    }
+}
 
         stage('Debug TestContainers Environment') {
             steps {
