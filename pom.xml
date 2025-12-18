@@ -28,6 +28,7 @@
   </dependencyManagement>
   
   <dependencies>
+   <!--
     <dependency>
       <groupId>io.quarkus</groupId>
       <artifactId>quarkus-resteasy-reactive-jackson</artifactId>
@@ -44,6 +45,7 @@
       <groupId>io.quarkus</groupId>
       <artifactId>quarkus-liquibase</artifactId>
     </dependency>
+    -->
     <dependency>
       <groupId>io.quarkus</groupId>
       <artifactId>quarkus-junit5</artifactId>
