@@ -31,7 +31,7 @@ pipeline {
                 container('maven') {
                     script {
                         echo "=== Running TestContainers Test ==="
-                            sh '''
+                           sh '''
                             # Postavi environment varijable
                             export DOCKER_HOST="tcp://localhost:2375"
                             export TESTCONTAINERS_DEBUG="true"
