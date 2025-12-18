@@ -1,62 +1,27 @@
 pipeline {
     agent {
-        kubernetes {
-            yaml '''
-apiVersion: v1
-kind: Pod
-spec:
-  containers:
-  - name: builder
-    image: maven:3.9.5-eclipse-temurin-17
-    command: ['sleep']
-    args: ['infinity']
-    volumeMounts:
-    - name: docker-sock
-      mountPath: /var/run/docker.sock
-  - name: docker
-    image: docker:24.0-cli
-    command: ['sleep']
-    args: ['infinity']
-    volumeMounts:
-    - name: docker-sock
-      mountPath: /var/run/docker.sock
-    securityContext:
-      privileged: true
-  volumes:
-  - name: docker-sock
-    emptyDir: {}
-'''
-        }
+        label 'dind-agent'
     }
-    
     stages {
-        stage('Test DinD') {
+        stage('Full TestContainers Sanity Check') {
             steps {
-                container('docker') {
+                container('maven') {
                     script {
-                        echo "=== DOCKER CHECK ==="
-                        sh '''
-                            docker version
-                            docker run --rm alpine:3.14 echo "Docker CLI works"
-                        '''
+                        echo "=== 1. Quick Docker Check ==="
+                        sh 'docker run --rm alpine:3.14 echo "Docker daemon ready"'
+                        
+                        echo "=== 2. Run Maven Test with TestContainers ==="
+                        // Ovo pokreće vaš test koji koristi TestContainers
+                        sh './mvnw clean test -Dtest=DockerCheckTest -B'
                     }
                 }
-                
-                container('builder') {
-                    script {
-                        echo "=== BUILD & TEST ==="
-                        sh '''
-                            # Install docker CLI in maven container
-                            apt-get update && apt-get install -y docker.io curl
-                            docker --version
-                            
-                            # Test Docker connection
-                            docker run --rm alpine:3.14 echo "Docker works with Maven"
-                            
-                            # Run TestContainers test
-                            mvn clean test -Dtest=DockerCheckTest
-                        '''
-                    }
+            }
+            post {
+                success {
+                    echo "✅🎉 POTPUN USPEH! TestContainers radi u Jenkins DinD pipeline-u. Vaš setup je spreman za projekte sa integracionim testovima (Postgres, itd.)."
+                }
+                failure {
+                    echo "⚠️ TestContainers test pao. Proverite: 1) da li je testni kod ispravan, 2) da li TestContainers može da povuče potrebne Docker image-e (npr. postgres:13)."
                 }
             }
         }
