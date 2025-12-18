@@ -2,63 +2,55 @@ pipeline {
     agent {
         label 'dind-agent'
     }
-
     stages {
-        stage('Install Tools & Check Docker') {
+        stage('Test DinD API Compatibility') {
             steps {
                 container('maven') {
                     script {
-                        echo "=== 1. INSTALLING DOCKER CLI & MAVEN ==="
+                        // Instalacija Docker CLI (svaki put u fresh container-u)
+                        sh 'apt-get update && apt-get install -y docker.io'
+                        
+                        // Provera da li DinD prihvata API verziju 1.40
                         sh '''
-                            apt-get update
-                            apt-get install -y docker.io maven netcat-openbsd
-                            echo "--- Versions ---"
-                            docker --version
-                            mvn --version
-                        '''
-
-                        echo "=== 2. QUICK DOCKER CHECK ==="
-                        sh 'docker run --rm alpine:3.14 echo "✅ Docker CLI -> DinD connection WORKS"'
-                    }
-                }
-            }
-        }
-
-        stage('Debug TestContainers Environment') {
-            steps {
-                container('maven') {
-                    script {
-                        echo "=== 3. DEBUG: DOCKER ENVIRONMENT ==="
-                        sh '''
-                            echo "--- Current DOCKER_HOST env var ---"
-                            echo "DOCKER_HOST=$DOCKER_HOST"
-                            echo ""
-                            echo "--- Checking port 2375 on localhost ---"
-                            if nc -zv localhost 2375 2>/dev/null; then
-                                echo "✅ Port 2375 is OPEN and reachable"
-                            else
-                                echo "❌ Cannot reach localhost:2375"
-                            fi
-                            echo ""
-                            echo "--- Testing Docker connection via CLI ---"
-                            docker info --format '{{.ServerVersion}}' && echo "✅ Docker daemon responds" || echo "❌ Docker daemon not responding"
+                            echo "=== Testing Docker API version ==="
+                            # Ova komanda će pokazati koju API verziju daemon podržava
+                            DOCKER_API_VERSION=1.40 docker version --format '{{.Client.APIVersion}} {{.Server.APIVersion}}' 2>&1 || true
+                            echo "---"
+                            
+                            # Standardna provera
+                            docker version
+                            echo "✅ DinD ready with API compatibility"
                         '''
                     }
                 }
             }
         }
-
+        
         stage('Run TestContainers Test') {
             steps {
                 container('maven') {
                     script {
-                        echo "=== 4. RUNNING TESTCONTAINERS TEST ==="
-                        sh '''
-                            # KLJUČNO: Eksplicitno postavljamo DOCKER_HOST za TestContainers
+                        echo "=== Running TestContainers Test ==="
+                           sh '''
+                            # Postavi environment varijable
                             export DOCKER_HOST="tcp://localhost:2375"
-                            echo "Using DOCKER_HOST: $DOCKER_HOST"
-
-                            # Pokrećemo test sa eksplicitnom DOCKER_HOST varijablom
+                            export TESTCONTAINERS_DEBUG="true"
+                            
+                            echo "DOCKER_HOST=$DOCKER_HOST"
+                            
+                            # KREIRAJ testcontainers.properties fajl - ovo je JEDINI pouzdan nacin!
+                            mkdir -p src/test/resources
+                            cat > src/test/resources/testcontainers.properties << 'EOF'
+testcontainers.ryuk.disabled=true
+testcontainers.reuse.enable=true
+docker.client.strategy=org.testcontainers.dockerclient.EnvironmentAndSystemPropertyClientProviderStrategy
+EOF
+                            
+                            echo "=== Created testcontainers.properties ==="
+                            cat src/test/resources/testcontainers.properties
+                            echo "======================================="
+                            
+                            # Pokreni testove
                             mvn clean test -Dtest=UserResourceTest -B -e
                         '''
                     }
@@ -66,18 +58,12 @@ pipeline {
             }
             post {
                 success {
-                    echo "✅🎉 POTPUN USPEH! TestContainers test sa PostgreSQL-om radi u DinD pipeline-u!"
+                    echo "✅🎉 KONAČAN USPEH! TestContainers radi sa DinD-om!"
                 }
                 failure {
-                    echo "❌ Test failed. Check the 'Run TestContainers Test' stage logs for details."
+                    echo "❌ Test pao. Proverite TestContainers debug logove."
                 }
             }
-        }
-    }
-
-    post {
-        always {
-            echo "=== PIPELINE FINISHED ==="
         }
     }
 }
