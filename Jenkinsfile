@@ -31,15 +31,20 @@ pipeline {
                 container('maven') {
                     script {
                         echo "=== Running TestContainers Test ==="
-                        sh '''
+                          sh '''
                             # Postavi environment varijable
                             export DOCKER_HOST="tcp://localhost:2375"
-                            export TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE="/var/run/docker.sock"
-                            TESTCONTAINERS_RYUK_DISABLED="true"
                             export TESTCONTAINERS_DEBUG="true"
                             
                             echo "DOCKER_HOST=$DOCKER_HOST"
-                            mvn clean test -Dtest=UserResourceTest -B -e
+                            echo "Running tests with Ryuk disabled and reuse enabled..."
+                            
+                            # Koristimo Maven -D properties za direktnu konfiguraciju TestContainers-a
+                            mvn clean test -Dtest=UserResourceTest \
+                                -Dtestcontainers.ryuk.disabled=true \
+                                -Dtestcontainers.reuse.enable=true \
+                                -Ddocker.host=tcp://localhost:2375 \
+                                -B -e
                         '''
                     }
                 }
